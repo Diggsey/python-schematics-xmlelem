@@ -75,7 +75,7 @@ class BasicTestCase(unittest.TestCase):
         self.assertEqual(foo.field2, 'B')
         self.assertEqual(foo.bar, 'Hello!')
         self.assertEqual(foo.baz, ['Item1', 'Item2', 'Item3'])
-        self.assertEqual(foo.content, '   Some content   ')
+        self.assertEqual(foo.content, 'Some content')
         self.assertEqual(foo.check, True)
 
     def test_nested_child_list(self):
