@@ -1,28 +1,15 @@
-import itertools
-from typing import List, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from schematics.undefined import Undefined
-
-from schematics_xmlelem.casing import to_upper_camelcase
+from schematics_xmlelem.mixins import DefaultValueMixin, ModelSpecMixin, OverridableTagNameMixin
 
 if TYPE_CHECKING:
-    from schematics_xmlelem.model import XmlElementModelMeta
     from schematics_xmlelem.types import XmlBaseType
+    from schematics_xmlelem.mixins import ModelSpec
 
 
-def _get_all_subclasses(cls):
-    all_subclasses = []
-
-    for subclass in cls.__subclasses__():
-        all_subclasses.append(subclass)
-        all_subclasses.extend(_get_all_subclasses(subclass))
-
-    return all_subclasses
-
-
-class XmlChildBase(object):
-    def __init__(self, default=Undefined):
-        self.default = default
+class XmlChildBase(DefaultValueMixin):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def matches(self, field_name, elem):
         raise NotImplementedError()
@@ -33,42 +20,13 @@ class XmlChildBase(object):
     def to_children(self, field_name, value):
         raise NotImplementedError()
 
-    def from_default(self):
-        if callable(self.default):
-            return self.default()
-        else:
-            return self.default
 
-
-class XmlChild(XmlChildBase):
-    def __init__(
-            self,
-            candidates: Union['XmlElementModelMeta', List['XmlElementModelMeta']],
-            default=Undefined,
-            allow_subclasses=False
-    ):
-        super().__init__(default=default)
-
-        from .model import XmlElementModelMeta
-
-        if isinstance(candidates, XmlElementModelMeta):
-            candidates = [candidates]
-        self.candidates = candidates
-        self.allow_subclasses = allow_subclasses
-
-    def _get_all_candidates(self):
-        if self.allow_subclasses:
-            return itertools.chain.from_iterable(
-                ([m] + _get_all_subclasses(m) for m in self.candidates)
-            )
-        else:
-            return self.candidates
+class XmlChild(XmlChildBase, ModelSpecMixin):
+    def __init__(self, candidates: 'ModelSpec', **kwargs):
+        super().__init__(candidates=candidates, **kwargs)
 
     def matches(self, field_name, elem):
-        for candidate in self._get_all_candidates():
-            if candidate._schema.tag_name == elem['tag']:
-                return candidate
-        return None
+        return self._find_candidate(elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         return match_result(raw_value=child)
@@ -80,34 +38,12 @@ class XmlChild(XmlChildBase):
             return [value.to_primitive()]
 
 
-class XmlChildren(XmlChildBase):
-    def __init__(
-            self,
-            candidates: Union['XmlElementModelMeta', List['XmlElementModelMeta']],
-            allow_subclasses=False
-    ):
-        super().__init__(default=list)
-
-        from .model import XmlElementModelMeta
-
-        if isinstance(candidates, XmlElementModelMeta):
-            candidates = [candidates]
-        self.candidates = candidates
-        self.allow_subclasses = allow_subclasses
-
-    def _get_all_candidates(self):
-        if self.allow_subclasses:
-            return itertools.chain.from_iterable(
-                ([m] + _get_all_subclasses(m) for m in self.candidates)
-            )
-        else:
-            return self.candidates
+class XmlChildren(XmlChildBase, ModelSpecMixin):
+    def __init__(self, candidates: 'ModelSpec', **kwargs):
+        super().__init__(default=list, candidates=candidates, **kwargs)
 
     def matches(self, field_name, elem):
-        for candidate in self._get_all_candidates():
-            if candidate._schema.tag_name == elem['tag']:
-                return candidate
-        return None
+        return self._find_candidate(elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         return old_value + [match_result(raw_value=child)]
@@ -116,34 +52,13 @@ class XmlChildren(XmlChildBase):
         return [child.to_primitive() for child in value]
 
 
-class XmlChildContent(XmlChildBase):
-    def __init__(
-            self,
-            type_: 'XmlBaseType',
-            serialized_name=None,
-            case_sensitive=False,
-            default=Undefined
-    ):
-        super().__init__(default=default)
-
+class XmlChildContent(XmlChildBase, OverridableTagNameMixin):
+    def __init__(self, type_: 'XmlBaseType', **kwargs):
+        super().__init__(**kwargs)
         self.type_ = type_
-        self.serialized_name = serialized_name
-        self.case_sensitive = case_sensitive
-
-    def _attrib_name(self, field_name):
-        if self.serialized_name is not None:
-            return self.serialized_name
-        else:
-            return to_upper_camelcase(field_name)
 
     def matches(self, field_name, elem):
-        field_name = self._attrib_name(field_name)
-        if not self.case_sensitive:
-            field_name = field_name.lower()
-            tag_name = elem['tag'].lower()
-        else:
-            tag_name = elem['tag']
-        return field_name == tag_name
+        return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         return self.type_.to_native(child['text'])
@@ -153,38 +68,19 @@ class XmlChildContent(XmlChildBase):
             return []
         else:
             return [{
-                'tag': self._attrib_name(field_name),
+                'tag': self._get_name(field_name),
                 'attrib': {},
                 'children': [],
                 'text': self.type_.to_primitive(value)
             }]
 
 
-class XmlBooleanChild(XmlChildBase):
-    def __init__(
-            self,
-            serialized_name=None,
-            case_sensitive=False
-    ):
-        super().__init__(default=False)
-
-        self.serialized_name = serialized_name
-        self.case_sensitive = case_sensitive
-
-    def _attrib_name(self, field_name):
-        if self.serialized_name is not None:
-            return self.serialized_name
-        else:
-            return to_upper_camelcase(field_name)
+class XmlBooleanChild(XmlChildBase, OverridableTagNameMixin):
+    def __init__(self, **kwargs):
+        super().__init__(default=False, **kwargs)
 
     def matches(self, field_name, elem):
-        field_name = self._attrib_name(field_name)
-        if not self.case_sensitive:
-            field_name = field_name.lower()
-            tag_name = elem['tag'].lower()
-        else:
-            tag_name = elem['tag']
-        return field_name == tag_name
+        return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         return True
@@ -192,7 +88,7 @@ class XmlBooleanChild(XmlChildBase):
     def to_children(self, field_name, value):
         if value:
             return [{
-                'tag': self._attrib_name(field_name),
+                'tag': self._get_name(field_name),
                 'attrib': {},
                 'children': [],
                 'text': None
@@ -201,39 +97,19 @@ class XmlBooleanChild(XmlChildBase):
             return []
 
 
-class XmlChildrenContent(XmlChildBase):
-    def __init__(
-            self,
-            type_: 'XmlBaseType',
-            serialized_name=None,
-            case_sensitive=False
-    ):
-        super().__init__(default=list)
-
+class XmlChildrenContent(XmlChildBase, OverridableTagNameMixin):
+    def __init__(self, type_: 'XmlBaseType', **kwargs):
+        super().__init__(default=list, **kwargs)
         self.type_ = type_
-        self.serialized_name = serialized_name
-        self.case_sensitive = case_sensitive
-
-    def _attrib_name(self, field_name):
-        if self.serialized_name is not None:
-            return self.serialized_name
-        else:
-            return to_upper_camelcase(field_name)
 
     def matches(self, field_name, elem):
-        field_name = self._attrib_name(field_name)
-        if not self.case_sensitive:
-            field_name = field_name.lower()
-            tag_name = elem['tag'].lower()
-        else:
-            tag_name = elem['tag']
-        return field_name == tag_name
+        return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         return old_value + [self.type_.to_native(child['text'])]
 
     def to_children(self, field_name, value):
-        tag = self._attrib_name(field_name)
+        tag = self._get_name(field_name)
         return [{
             'tag': tag,
             'attrib': {},
@@ -242,66 +118,25 @@ class XmlChildrenContent(XmlChildBase):
         } for child in value]
 
 
-class XmlNestedChildList(XmlChildBase):
-    def __init__(
-            self,
-            candidates: Union['XmlElementModelMeta', List['XmlElementModelMeta']],
-            allow_subclasses=False,
-            serialized_name=None,
-            case_sensitive=False
-    ):
-        super().__init__(default=list)
-
-        from .model import XmlElementModelMeta
-
-        if isinstance(candidates, XmlElementModelMeta):
-            candidates = [candidates]
-        self.candidates = candidates
-        self.allow_subclasses = allow_subclasses
-        self.serialized_name = serialized_name
-        self.case_sensitive = case_sensitive
-
-    def _attrib_name(self, field_name):
-        if self.serialized_name is not None:
-            return self.serialized_name
-        else:
-            return to_upper_camelcase(field_name)
-
-    def _get_all_candidates(self):
-        if self.allow_subclasses:
-            return itertools.chain.from_iterable(
-                ([m] + _get_all_subclasses(m) for m in self.candidates)
-            )
-        else:
-            return self.candidates
+class XmlNestedChildList(XmlChildBase, OverridableTagNameMixin, ModelSpecMixin):
+    def __init__(self, candidates: 'ModelSpec', **kwargs):
+        super().__init__(default=list, candidates=candidates, **kwargs)
 
     def matches(self, field_name, elem):
-        field_name = self._attrib_name(field_name)
-        if not self.case_sensitive:
-            field_name = field_name.lower()
-            tag_name = elem['tag'].lower()
-        else:
-            tag_name = elem['tag']
-        return field_name == tag_name
-
-    def _matches_child(self, elem):
-        for candidate in self._get_all_candidates():
-            if candidate._schema.tag_name == elem['tag']:
-                return candidate
-        return None
+        return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
-        children = child.get('children', [])
+        grand_children = child.get('children', [])
         result = []
-        for c in children:
-            child_match = self._matches_child(c)
-            if child_match:
-                result.append(child_match(raw_value=c))
+        for grand_child in grand_children:
+            grand_child_match = self._find_candidate(grand_child['tag'])
+            if grand_child_match is not None:
+                result.append(grand_child_match(raw_value=grand_child))
         return result
 
     def to_children(self, field_name, value):
         return [{
-            'tag': self._attrib_name(field_name),
+            'tag': self._get_name(field_name),
             'attrib': {},
             'children': [child.to_primitive() for child in value],
             'text': None

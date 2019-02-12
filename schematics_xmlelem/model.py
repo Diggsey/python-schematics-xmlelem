@@ -2,13 +2,12 @@ from collections import OrderedDict
 from copy import deepcopy
 from types import FunctionType
 
-from schematics import Model
 from schematics.exceptions import UndefinedValueError, DataError
 from schematics.undefined import Undefined
 
-from .attributes import XmlAttribute
+from .attributes import XmlAttributeBase
 from .children import XmlChildBase
-from .content import XmlContent
+from .content import XmlContentBase
 from .schema import Schema
 
 
@@ -58,6 +57,7 @@ class XmlElementModelMeta(type):
     """
     Metaclass for XML Models.
     """
+    _schema: Schema = ...
 
     def __new__(mcs, name, bases, attrs):
         """
@@ -67,6 +67,7 @@ class XmlElementModelMeta(type):
 
         # Structures used to accumulate meta info
         tag_name = name
+        tag_case_sensitive = True
         attributes = OrderedDict()
         children = OrderedDict()
         content = OrderedDict()
@@ -84,14 +85,16 @@ class XmlElementModelMeta(type):
         for key, value in attrs.items():
             if key.startswith('validate_') and isinstance(value, (FunctionType, classmethod)):
                 validator_functions[key[9:]] = value
-            if isinstance(value, XmlAttribute):
+            if isinstance(value, XmlAttributeBase):
                 attributes[key] = value
             elif isinstance(value, XmlChildBase):
                 children[key] = value
-            elif isinstance(value, XmlContent):
+            elif isinstance(value, XmlContentBase):
                 content[key] = value
             elif key == 'tag_name':
                 tag_name = str(value)
+            elif key == 'tag_case_sensitive':
+                tag_case_sensitive = bool(value)
 
         # Convert declared fields into descriptors for new class
         for key, t in attributes.items():
@@ -108,8 +111,8 @@ class XmlElementModelMeta(type):
 
         # Parse meta data into new schema
         klass._schema = Schema(
-            name, tag_name=tag_name, model=klass, validators=validator_functions,
-            attributes=attributes, children=children, content=content
+            name, tag_name=tag_name, tag_case_sensitive=tag_case_sensitive, model=klass,
+            validators=validator_functions, attributes=attributes, children=children, content=content
         )
 
         return klass
@@ -169,6 +172,8 @@ class XmlElementModel(object, metaclass=XmlElementModelMeta):
                     raise DataError({'text': 'Rogue content'})
 
     def import_data(self, raw_value, strict=False):
+        if not self._schema.compare_tag_name(raw_value['tag']):
+            raise DataError({raw_value['tag']: 'Mismatched tag name'})
         self._import_attributes(raw_value.get('attrib', {}), strict)
         self._import_children(raw_value.get('children', []), strict)
         self._import_content(raw_value.get('text'), strict)
