@@ -94,6 +94,6 @@ class XmlEnumType(XmlBaseType):
 
     def to_native(self, value):
         for variant in self.enum_class:
-            if _compare_reference_value(value, variant.value, self.case_sensitive):
+            if _compare_reference_value(variant.value, value, self.case_sensitive):
                 return variant
         raise ConversionError('Value not recognised as a variant of enum')

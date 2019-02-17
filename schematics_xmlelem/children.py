@@ -61,7 +61,10 @@ class XmlChildContent(XmlChildBase, OverridableTagNameMixin):
         return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
-        return self.type_.to_native(child['text'])
+        if child['text'] is None:
+            return None
+        else:
+            return self.type_.to_native(child['text'])
 
     def to_children(self, field_name, value):
         if value is None:
@@ -106,7 +109,10 @@ class XmlChildrenContent(XmlChildBase, OverridableTagNameMixin):
         return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
-        return old_value + [self.type_.to_native(child['text'])]
+        if child['text'] is None:
+            return old_value + [None]
+        else:
+            return old_value + [self.type_.to_native(child['text'])]
 
     def to_children(self, field_name, value):
         tag = self._get_name(field_name)
