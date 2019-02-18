@@ -138,7 +138,7 @@ class XmlNestedChildList(XmlChildBase, OverridableTagNameMixin, ModelSpecMixin):
             grand_child_match = self._find_candidate(grand_child['tag'])
             if grand_child_match is not None:
                 result.append(grand_child_match(raw_value=grand_child))
-        return result
+        return old_value + result
 
     def to_children(self, field_name, value):
         return [{
