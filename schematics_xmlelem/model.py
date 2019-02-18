@@ -177,6 +177,7 @@ class XmlElementModel(object, metaclass=XmlElementModelMeta):
         self._import_attributes(raw_value.get('attrib', {}), strict)
         self._import_children(raw_value.get('children', []), strict)
         self._import_content(raw_value.get('text'), strict)
+        return self
 
     def _export_attributes(self):
         attrib = {}
