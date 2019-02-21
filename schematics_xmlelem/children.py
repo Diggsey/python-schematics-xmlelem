@@ -53,28 +53,30 @@ class XmlChildren(XmlChildBase, ModelSpecMixin):
 
 
 class XmlChildContent(XmlChildBase, OverridableTagNameMixin):
-    def __init__(self, type_: 'XmlBaseType', **kwargs):
+    def __init__(self, type_: 'XmlBaseType', null_value=None, **kwargs):
         super().__init__(**kwargs)
         self.type_ = type_
+        self.null_value = null_value
 
     def matches(self, field_name, elem):
         return self._compare_name(field_name, elem['tag'])
 
     def incorporate_child(self, match_result, old_value, child):
         if child['text'] is None:
-            return None
+            return self.null_value
         else:
             return self.type_.to_native(child['text'])
 
     def to_children(self, field_name, value):
-        if value is None:
+        is_null = self.null_value == value
+        if value is None and not is_null:
             return []
         else:
             return [{
                 'tag': self._get_name(field_name),
                 'attrib': {},
                 'children': [],
-                'text': self.type_.to_primitive(value)
+                'text': None if is_null else self.type_.to_primitive(value)
             }]
 
 

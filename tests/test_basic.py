@@ -19,6 +19,8 @@ class Foo(XmlElementModel):
     baz = XmlChildrenContent(XmlStringType())
     content = XmlContent(XmlStringType())
     check = XmlBooleanChild()
+    bar_null1 = XmlChildContent(XmlStringType(), null_value=0, default=None)
+    bar_null2 = XmlChildContent(XmlStringType(), null_value=0, default=None)
 
 
 class Bar(XmlElementModel):
@@ -64,6 +66,7 @@ class BasicTestCase(unittest.TestCase):
             '   <Baz>Item2</Baz>'
             '   <Baz>Item3</Baz>'
             '   <Check/>'
+            '   <BarNull1/>'
             '</Foo>'
         )
 
@@ -77,6 +80,8 @@ class BasicTestCase(unittest.TestCase):
         self.assertEqual(foo.baz, ['Item1', 'Item2', 'Item3'])
         self.assertEqual(foo.content, 'Some content')
         self.assertEqual(foo.check, True)
+        self.assertEqual(foo.bar_null1, 0)
+        self.assertIsNone(foo.bar_null2)
 
     def test_nested_child_list(self):
         input_json = parse(
